@@ -21,7 +21,7 @@ class TabNetMultiTaskClassifier(TabModel):
             y_mapped[:, task_idx] = np.vectorize(task_mapper.get)(y[:, task_idx])
         return y_mapped
 
-    def compute_loss(self, y_pred, y_true):
+    def compute_loss(self, y_pred, y_true, consolidated_forecast=None, weight=None):
         """
         Computes the loss according to network output and targets
 

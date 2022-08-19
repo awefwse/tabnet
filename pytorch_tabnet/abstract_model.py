@@ -127,6 +127,8 @@ class TabModel(BaseEstimator):
         from_unsupervised=None,
         warm_start=False,
         augmentations=None,
+        apply_weight=False,
+        compare_consolidated=False
     ):
         """Train a neural network stored in self.network
         Using train_dataloader for training data and
@@ -238,7 +240,7 @@ class TabModel(BaseEstimator):
             # Call method on_epoch_begin for all callbacks
             self._callback_container.on_epoch_begin(epoch_idx)
 
-            self._train_epoch(train_dataloader)
+            self._train_epoch(train_dataloader, apply_weight, compare_consolidated)
 
             # Apply predict epoch to all eval sets
             for eval_name, valid_dataloader in zip(eval_names, valid_dataloaders):
@@ -440,7 +442,7 @@ class TabModel(BaseEstimator):
 
         return
 
-    def _train_epoch(self, train_loader):
+    def _train_epoch(self, train_loader, apply_weight=False, compare_consolidated=False):
         """
         Trains one epoch of the network in self.network
 
@@ -454,7 +456,7 @@ class TabModel(BaseEstimator):
         for batch_idx, (X, y) in enumerate(train_loader):
             self._callback_container.on_batch_begin(batch_idx)
 
-            batch_logs = self._train_batch(X, y)
+            batch_logs = self._train_batch(X, y, apply_weight, compare_consolidated)
 
             self._callback_container.on_batch_end(batch_idx, batch_logs)
 
@@ -463,7 +465,7 @@ class TabModel(BaseEstimator):
 
         return
 
-    def _train_batch(self, X, y):
+    def _train_batch(self, X, y, apply_weight=False, compare_consolidated=False):
         """
         Trains one batch of data
 
@@ -481,6 +483,21 @@ class TabModel(BaseEstimator):
         batch_logs : dict
             Dictionnary with "batch_size" and "loss".
         """
+
+        # split out weight and consolidated according to given flags
+        if compare_consolidated:
+            assert apply_weight, 'weight not given for comparing with consolidated'
+            consolidated_forecast = X[:, -1]
+            X = X[:, :-1]
+        else:
+            consolidated_forecast = None
+        
+        if apply_weight:
+            weight = X[:, -1]
+            X = X[:, :-1]
+        else:
+            weight = None
+        
         batch_logs = {"batch_size": X.shape[0]}
 
         X = X.to(self.device).float()
@@ -494,7 +511,7 @@ class TabModel(BaseEstimator):
 
         output, M_loss = self.network(X)
 
-        loss = self.compute_loss(output, y)
+        loss = self.compute_loss(output, y, consolidated_forecast, weight)
         # Add the overall sparsity loss
         loss = loss - self.lambda_sparse * M_loss
 
@@ -750,7 +767,7 @@ class TabModel(BaseEstimator):
         )
 
     @abstractmethod
-    def compute_loss(self, y_score, y_true):
+    def compute_loss(self, y_score, y_true, consolidated_forecast, weight):
         """
         Compute the loss.
 
